@@ -17,10 +17,18 @@ TODO(học viên): vì sao `05_review_queue.csv` xếp ảnh đầu hàng như v
 ## 3. Calibration (2 ngưỡng)
 | Tham số | Khởi đầu | Đã chọn | Precision / Recall (trước → sau) | Lý do (đánh đổi) |
 |---|---|---|---|---|
-| `duplicates.phash_dist` | 2 | TODO(học viên) | | |
-| `second_opinion.conf` | 0.25 | TODO(học viên) | | |
+| `duplicates.phash_dist` | 2 | **12** | NEAR: 1.00 / 0.50 → **1.00 / 0.67** (4/6); EXACT giữ 1.00 / 1.00 | Lỗi bắt buộc → **xoá ảnh**, nên ưu tiên precision. Trên calib 4–14 cho cùng kết quả; trên raw 10–14 cũng giống nhau (loại 17 ảnh trùng/rò rỉ). Chọn 12 ở **giữa** cặp trùng thật xa nhất đã mở xem (dist 10) và cặp sai đầu tiên (dist 16), chừa biên an toàn hai phía. |
+| `second_opinion.conf` | 0.25 | **0.6** | WRONG_CLASS 0.56 / 0.83 → **0.62 / 0.83**; MISSING 0.50 / 1.00 → **0.57 / 1.00**; LOOSE_BOX 0.29 / 0.40 → 0.20 / 0.20; FALSE_POS không đổi 0.31 / 1.00 (dùng `fp_conf`) | Cảnh báo cho người nên ưu tiên **recall**. 0.6 là giá trị **cao nhất** mà MISSING vẫn giữ recall 1.00 (ở 0.7 tụt còn 0.88, ở 0.8 còn 0.75) và WRONG_CLASS giữ 0.83, trong khi bớt báo động giả: FP của MISSING 8 → 6, WRONG_CLASS 4 → 3; hàng đợi trên raw 143 → 125 ảnh. Đánh đổi: LOOSE_BOX mất 1/5 lỗi chèn (mẫu chỉ 5 nên mỗi lỗi = 20%). |
 
-TODO(học viên): **một chỗ calibration có thể đánh lừa bạn**, kèm bằng chứng từ dữ liệu của bạn (vd. mở xem vài cặp ảnh bị cho là trùng; số ảnh bị loại ở bước 1 có hợp lý không?).
+**Không chọn `conf` = 0.8 dù nó cho Release.** Tôi chạy thử pipeline trên raw với từng `conf` (`phash_dist` = 12): 0.25 → 0.7 đều **Hold** (28.7% → 14.4% ảnh còn cảnh báo), chỉ 0.8 cho **Release** (7.9%). Nhưng ở 0.8 checker bỏ sót 2/8 box bị xoá trên calib: hàng đợi nhỏ đi vì checker mù hơn, không phải vì dữ liệu sạch hơn, tức là Release giả. Tôi chọn theo sweep, chấp nhận Hold.
+
+**Chỗ calibration đánh lừa: `phash_dist`.** Trên calib, sweep nói **16 là tốt nhất** (NEAR 1.00 / 0.83, F1 0.91, precision vẫn 1.00). Áp lên raw:
+
+| `phash_dist` | 2–4 | 6–8 | 10–14 | 16 | 20 |
+|---|---:|---:|---:|---:|---:|
+| ảnh raw bị loại vì trùng/rò rỉ | 14 | 16 | 17 | **26** | **134 / 224** |
+
+Mở xem các cặp bị cho là trùng (`work/dup_pairs.png`): img_0223–img_0077 (dist 6, đổi sáng) và img_0186–img_0061 (dist 10, cắt ảnh) là trùng thật; ở dist 16 img_0084–img_0074 trùng thật nhưng **img_0011 (tennis) – img_0008 (trượt tuyết)** và **img_0177 (lướt sóng) – img_0113 (người ngồi bàn)** là ảnh **hoàn toàn khác**, và số `LEAK_TEST` nhảy 5 → 11. Precision 1.00 trên calib là ảo: calib chỉ có 9 ảnh trùng và **không có ca LEAK_TEST**, nên báo rò rỉ sai không bị tính FP; ở dist 20 recall EXACT trên calib còn tụt (1.00 → 0.33) vì ảnh trùng byte bị gắn nhầm thành LEAK_TEST trước. Ngưỡng "tốt nhất trên calib" sẽ xoá nhầm ít nhất 2 ảnh tốt của raw. Cái giá: cặp img_0084–img_0074 (trùng thật, dist 16) lọt qua, đây là **điểm mù đã biết** (ảnh trùng biến đổi mạnh).
 
 ## 4. Cửa chặn và điều pipeline KHÔNG bắt được
 **(a) Gate chặn đúng.** `python -m pipeline.run --budget 0 --reports work/rep_nb --export-dir work/exp_nb` (không có người duyệt):
