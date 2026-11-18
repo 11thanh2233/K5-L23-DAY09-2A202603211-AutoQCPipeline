@@ -71,7 +71,23 @@ không tạo file nhãn rỗng (rỗng = "ảnh nền", khác "chưa gán"), nê
 
 ## 5. Train: raw vs clean (tùy chọn, chấm riêng)
 
-**Chưa chạy.** Phần train trên Colab là tùy chọn; tôi chưa train nên không có `submission/results/` và không đưa ra kết luận nào về clean so với raw.
+Train trên Colab (T4) bằng `scripts/train_compare.py`: **yolo26n, 20 epoch, batch 16, imgsz 640, seed 0 và 1**, cùng val (`gold_val`, 40 ảnh) và test (100 ảnh) cho cả hai biến thể. `clean` = `export/clean_v1` (bản nháp Hold, `manifest_sha1` khớp), `raw` = toàn bộ lô gốc.
+
+| biến thể | #ảnh train | số seed | map50 (TB ± độ lệch) | map50_95 (TB ± độ lệch) | precision (TB ± độ lệch) | recall (TB ± độ lệch) |
+|---|---|---|---|---|---|---|
+| raw | 224 | 2 | 0.726 ± 0.000 | 0.512 ± 0.004 | 0.764 ± 0.061 | 0.649 ± 0.028 |
+| clean | 202 | 2 | 0.701 ± 0.025 | 0.487 ± 0.008 | 0.759 ± 0.003 | 0.625 ± 0.019 |
+
+**Chênh mAP50 (clean − raw) = −0.025**, bằng **độ lệch chuẩn giữa seed của clean (0.025)**; hai seed của clean là 0.718 và 0.683, khoảng của nó chứa cả 0.726 của raw. Với 2 seed và 100 ảnh test, **chưa kết luận được** clean tốt hơn hay kém hơn raw: khác biệt nằm trong nhiễu. Tôi **không** nói "pipeline làm dữ liệu tốt hơn".
+
+AP50 theo lớp (seed 0 / seed 1): car raw 0.75 / 0.72 vs clean 0.74 / 0.74; person 0.81 / 0.83 vs 0.82 / 0.83 (gần như bằng nhau); bus 0.68 / 0.71 vs 0.73 / 0.68; **truck 0.66 / 0.64 vs 0.59 / 0.49**. Gần như toàn bộ chênh lệch đến từ **truck**, lớp chỉ có 41 box trong clean (`class_stats.csv`), và chính lớp này dao động mạnh nhất giữa 2 seed của clean (0.59 → 0.49).
+
+**Giả thuyết và cách kiểm:**
+1. **Raw được lợi nhờ rò rỉ test.** Raw chứa 5 ảnh `LEAK_TEST` trùng ảnh test (và 12 ảnh trùng lặp), nên model raw đã "thấy" một phần tập test, làm metric đẹp giả. Cách kiểm: train thêm biến thể `raw` bỏ đúng 5 ảnh rò rỉ, hoặc đo mAP trên test sau khi bỏ 5 ảnh test bị trùng; nếu khoảng cách thu hẹp thì giả thuyết đúng.
+2. **Clean mất box truck.** Autofix xoá 20 dòng hỏng (6 `BAD_CLASS_ID`, 7 `DUP_BOX`, 4 `BOX_ZERO`, 3 `BAD_FORMAT`). Box bị xoá vì id sai mà chưa được người gán lại sẽ thành "thiếu nhãn", và 38 ảnh còn cảnh báo chưa duyệt vẫn mang nhãn máy (nhầm car↔truck↔bus). Với lớp ít box như truck, vài box sai/mất đủ làm AP dao động. Cách kiểm: đếm box truck raw so với clean theo ảnh; chạy lại với ngân sách duyệt lớn hơn cho đủ 38 ảnh.
+3. **Nhiễu thống kê.** 2 seed, 20 epoch, 100 ảnh test (truck chỉ chiếm một phần nhỏ). Cách kiểm: ≥ 3–5 seed và bootstrap trên tập test để có khoảng tin cậy trước khi kết luận.
+
+**Việc tiếp theo:** chạy ý 1 (bỏ ảnh rò rỉ khỏi raw) trước, vì đó là so sánh công bằng nhất; sau đó tăng số seed.
 
 ## 6. Quyết định và ghi chú AI
 **(a) Quyết định cuối: HOLD.** Dataset `clean_v1` chỉ là bản nháp để thử nghiệm, chưa phát hành. Điều kiện để thành **Release**: số ảnh còn cảnh báo phải < 10% × 202, tức **≤ 20 ảnh**, nghĩa là người cần duyệt thêm **≥ 18 / 38** ảnh còn lại (ngân sách ~98 thay vì 80, hoặc thêm một vòng duyệt), ưu tiên 20 ảnh `LOOSE_BOX` và 21 ảnh `FALSE_POS` đang tồn. **Không** làm bằng cách nâng `second_opinion.conf` lên 0.8: cách đó cũng cho Release (7.9%) nhưng là vì checker mù hơn (mất 25% recall `MISSING` trên calib), không phải vì dữ liệu sạch hơn (xem mục 3).
