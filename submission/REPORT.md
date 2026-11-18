@@ -1,18 +1,37 @@
 # Báo cáo Day 09 — VoDuyThanh, 2A202603211
 
-> Xoá mọi `TODO(học viên)` và dòng gợi ý. Mỗi ý trả lời bằng **số lấy từ `submission/reports/`**, kèm mẫu số. Cả báo cáo ~1–2 trang.
-
 ## 1. Kết luận trước
-TODO(học viên): pipeline kết luận **Release / Hold / Rework**? Bao nhiêu ảnh vào, bao nhiêu ảnh ra dataset? Lý do chính (1–3 câu).
+**HOLD** (mã thoát 10). Vào **224 ảnh**, intake loại **22** (8 trùng byte, 4 gần trùng, 5 rò rỉ test, 3 quá nhỏ, 2 hỏng), xuất **202 ảnh** ra `submission/export/clean_v1/` dưới dạng **bản nháp** (`manifest.json`: `decision: Hold`, chưa phát hành).
+Sau người duyệt **không còn lỗi bắt buộc** (0 ERROR trong `07_error_list_v3`), nhưng **38/202 ảnh (18.8%)** vẫn còn cảnh báo chưa ai duyệt, vượt ngưỡng 10%: hàng đợi có 125 ảnh mà ngân sách duyệt chỉ có 80.
 
 ## 2. Lỗi và phân việc
-Lấy từ `02_error_list_v1` (gom theo mã lỗi). Cột "ai sửa": **máy** (autofix) hay **người** (hàng đợi); chỉ ghi những mã có mặt trong lô của bạn.
+Số liệu từ `02_error_list_v1` (gom theo mã lỗi; mẫu số: 224 ảnh vào intake, 202 ảnh được nhận).
 
 | Mã lỗi | Số ảnh/dòng | Ai sửa (máy/người) | Vì sao |
 |---|---:|---|---|
-| TODO(học viên) | | | |
+| `DUP_IMAGE_EXACT` | 8 ảnh / 224 | máy (loại ảnh) | md5 trùng: chắc chắn, giữ ảnh đầu tiên |
+| `LEAK_TEST` | 5 ảnh / 224 | máy (loại ảnh) | trùng ảnh test/val, để lại sẽ làm metric đẹp giả |
+| `DUP_IMAGE_NEAR` | 4 ảnh / 224 | máy (loại ảnh) | phash ≤ 12 (đã mở xem, đúng là ảnh trùng) |
+| `BAD_SIZE` / `CORRUPT_IMAGE` | 3 / 2 ảnh | máy (loại ảnh) | dưới 250 px / không mở được: không dùng để train được |
+| `BAD_FORMAT` | 3 dòng / 3 ảnh | máy (xoá dòng) | thiếu cột / `nan`: không đoán được giá trị đúng |
+| `BAD_CLASS_ID` | 6 dòng / 6 ảnh (id −1, 4, 7, 93) | máy (xoá dòng) | id ngoài 0..3: không biết lớp thật; box bị mất sẽ hiện lại thành `POSSIBLE_MISSING` cho người |
+| `BOX_ZERO` | 4 dòng / 4 ảnh | máy (xoá dòng) | box không có diện tích |
+| `DUP_BOX` | 7 dòng / 7 ảnh | máy (xoá dòng sau) | 2 box cùng lớp IoU > 0.9 (vd. img_0001 dòng 3) |
+| `BOX_OUT_OF_IMAGE` | 8 dòng / 8 ảnh | máy (cắt box) | cắt về [0,1], giữ lớp (vd. img_0030 dòng 9) |
+| `BAD_CLASS_NAME` | 2 tên (`Person`, `Bus`) / data.yaml | máy (ghi lại `names`) | tên lớp đã cố định trong config |
+| `MISSING_LABEL_FILE` | 6 ảnh / 202 | **người** (gán nhãn) | máy không được bịa nhãn → `needs_label`, đưa lên đầu hàng đợi |
+| `POSSIBLE_MISSING` | 53 / 52 ảnh | **người** | model thấy vật mà nhãn không có box |
+| `POSSIBLE_FALSE_POS` | 29 / 27 ảnh | **người** | box nhãn không khớp vật nào model thấy |
+| `POSSIBLE_LOOSE_BOX` | 28 / 24 ảnh | **người** | đúng vật, IoU < 0.5 |
+| `POSSIBLE_WRONG_CLASS` | 18 / 18 ảnh | **người** | cùng vị trí, model nói lớp khác (car/truck/bus) |
+| `EMPTY_LABEL` | 12 ảnh (v2: 15) | **người** | ảnh nền hay mất nhãn? (img_0004 có car mà file rỗng). Tăng 12 → 15 vì autofix xoá hết dòng hỏng của 3 file |
+| `BOX_TINY` / `BOX_HUGE` | 6 dòng / 4 ảnh · 3 / 3 ảnh | **người** | quy tắc guideline, không chắc là lỗi |
+| `CLASS_RARE` | 4 (lớp −1, 4, 7, 93) / dataset | máy (gián tiếp) | biến mất sau khi xoá các dòng `BAD_CLASS_ID` |
 
-TODO(học viên): vì sao `05_review_queue.csv` xếp ảnh đầu hàng như vậy? Với ngân sách 80 ảnh, người xem được bao nhiêu lỗi ngữ nghĩa?
+Tổng `02_error_list_v1`: **36 lỗi bắt buộc + 153 cảnh báo** trên 202 ảnh được nhận. Autofix: **35 thay đổi** trong `03_fixes.csv` (20 `drop_line`, 8 `clip_box`, 6 `needs_label`, 1 `rename_classes`).
+
+**Hàng đợi (`05_review_queue.csv`, 125 ảnh).** Điểm ưu tiên = Σ trọng số mã × (1 + conf của model) + điểm cho dòng máy đã sửa. Đầu hàng là img_0020 (11.5: `FIXED_DROP_LINE` + `POSSIBLE_MISSING` + `POSSIBLE_WRONG_CLASS`), tiếp theo là 6 ảnh `NEEDS_LABEL` (trọng số 10: không có người thì chắc chắn Rework). Sau đó đến các ảnh `WRONG_CLASS` (trọng số 3) và `MISSING` / `FALSE_POS` (2) có conf cao, vì gán nhầm lớp và thiếu vật làm hại model nhiều nhất. Ảnh thứ 80 (img_0012, một `POSSIBLE_MISSING`) có điểm 3.34.
+**Với ngân sách 80 ảnh:** người duyệt **74 ảnh có cảnh báo ngữ nghĩa** trên tổng 103 ảnh có loại cảnh báo này trong hàng đợi (72%), gồm **18/18** ảnh `WRONG_CLASS`, **50/52** `MISSING`, 12/23 `FALSE_POS`, nhưng chỉ **8/24** `LOOSE_BOX`, vì trọng số thấp nhất (1.5) nên bị xếp cuối. Sau duyệt, `07_error_list_v3` còn 13 `MISSING`, 3 `WRONG_CLASS`, 21 `FALSE_POS`, 20 `LOOSE_BOX`.
 
 ## 3. Calibration (2 ngưỡng)
 | Tham số | Khởi đầu | Đã chọn | Precision / Recall (trước → sau) | Lý do (đánh đổi) |
@@ -51,12 +70,11 @@ không tạo file nhãn rỗng (rỗng = "ảnh nền", khác "chưa gán"), nê
 4. **Ảnh không có dự đoán trong cache** (img_0136): `second_opinion` gọi model thật, cần `ultralytics`. Ảnh này bị loại ở intake nên pipeline không gặp, nhưng nếu một ảnh mới lọt qua intake mà không có cache thì check sẽ dừng thay vì cảnh báo.
 
 ## 5. Train: raw vs clean (tùy chọn, chấm riêng)
-Chưa train: ghi "chưa chạy" và lý do, rồi bỏ qua phần còn lại của mục này. Nếu đã train: dán bảng từ `submission/results/comparison.md` (model, epoch, seed, số ảnh train mỗi biến thể).
 
-TODO(học viên): chênh mAP50 (clean − raw) so với **độ lệch chuẩn giữa các seed**; kết luận **trung thực** (nằm trong nhiễu thì nói là chưa kết luận được); ≥ 2 giả thuyết giải thích (ảnh trùng/rò rỉ test trong `raw`, nhãn máy còn lại trong `clean`, test chỉ 100 ảnh…) và cách kiểm.
+**Chưa chạy.** Phần train trên Colab là tùy chọn; tôi chưa train nên không có `submission/results/` và không đưa ra kết luận nào về clean so với raw.
 
 ## 6. Quyết định và ghi chú AI
-TODO(học viên): (a) quyết định cuối; nếu Hold/Rework cần làm gì để thành Release?
+**(a) Quyết định cuối: HOLD.** Dataset `clean_v1` chỉ là bản nháp để thử nghiệm, chưa phát hành. Điều kiện để thành **Release**: số ảnh còn cảnh báo phải < 10% × 202, tức **≤ 20 ảnh**, nghĩa là người cần duyệt thêm **≥ 18 / 38** ảnh còn lại (ngân sách ~98 thay vì 80, hoặc thêm một vòng duyệt), ưu tiên 20 ảnh `LOOSE_BOX` và 21 ảnh `FALSE_POS` đang tồn. **Không** làm bằng cách nâng `second_opinion.conf` lên 0.8: cách đó cũng cho Release (7.9%) nhưng là vì checker mù hơn (mất 25% recall `MISSING` trên calib), không phải vì dữ liệu sạch hơn (xem mục 3).
 
 **(b) Ghi chú AI** (có dùng: Claude Code viết 4 module `label_format`, `gate`, `autofix`, `second_opinion`):
 - **Prompt chính:** dán docstring của stub + file test tương ứng (`tests/test_<tên>.py`) + `pipeline/common.py`; yêu cầu: chỉ sửa đúng file stub, không viết cứng ngưỡng (đọc từ `cfg`), không sửa `data/raw` hay `tests/`, chạy `pytest tests/test_<tên>.py -q`.
