@@ -2,7 +2,7 @@
 
 ## 1. Kết luận trước
 **HOLD** (mã thoát 10). Vào **224 ảnh**, intake loại **22** (8 trùng byte, 4 gần trùng, 5 rò rỉ test, 3 quá nhỏ, 2 hỏng), xuất **202 ảnh** ra `submission/export/clean_v1/` dưới dạng **bản nháp** (`manifest.json`: `decision: Hold`, chưa phát hành).
-Sau người duyệt **không còn lỗi bắt buộc** (0 ERROR trong `07_error_list_v3`), nhưng **38/202 ảnh (18.8%)** vẫn còn cảnh báo chưa ai duyệt, vượt ngưỡng 10%: hàng đợi có 125 ảnh mà ngân sách duyệt chỉ có 80.
+Sau người duyệt **không còn lỗi bắt buộc** (0 ERROR trong `07_error_list_v3`), nhưng **38/202 ảnh (18.8%)** vẫn còn cảnh báo chưa duyệt, vượt ngưỡng 10%: hàng đợi có 125 ảnh mà ngân sách duyệt chỉ có 80.
 
 ## 2. Lỗi và phân việc
 Số liệu từ `02_error_list_v1` (gom theo mã lỗi; mẫu số: 224 ảnh vào intake, 202 ảnh được nhận).
